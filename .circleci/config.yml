@@ -1,0 +1,25 @@
+version: 2.1
+description: Build and publish Near Core
+
+executors:
+  default:
+    description: Executor environment for building Rust crates.
+    docker:
+      - image: rust:1
+
+jobs:
+  build:
+    description: Build near code
+    executor: default
+    steps:
+      - checkout
+      - run: git clone https://github.com/nearprotocol/nearcore.git && cd nearcore
+      - run: make release
+      - run:
+          name: Build Docker image
+          command: docker build -t neardeploy:latest .
+      - run:
+          name: Push Docker image to Docker Hub
+          command: |
+            echo "$DOCKERHUB_PASS" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
+            docker push neardeploy:latest

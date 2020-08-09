@@ -1,0 +1,41 @@
+name: Build and publish nearcore images
+on: [push]
+
+jobs:
+  build:
+    name: Build and publish
+    strategy:
+        fail-fast: false
+        matrix:
+          release-name: ["beta"]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y jq cmake g++ llvm clang pkg-config libudev-dev libusb-dev libusb-1.0-0-dev
+      
+      - name: Clone latest nearcore ${{ matrix.release-name }} release
+        env: 
+          RELEASE_NAME: ${{ matrix.release-name }}
+        run: |
+          TAG=`echo $(curl -s https://api.github.com/repos/nearprotocol/nearcore/releases | jq -c -r --arg RELEASE_NAME "$RELEASE_NAME" 'map(select(.tag_name | contains($RELEASE_NAME)))[0].tag_name')`
+          git clone --depth 1 --branch $TAG https://github.com/nearprotocol/nearcore.git
+          echo "::set-env name=TAG::$TAG"
+      
+      - name: Install rust
+        run: |
+          cp ./nearcore/rust-toolchain /tmp/rust-toolchain
+          curl https://sh.rustup.rs -sSf | sh -s -- -y --no-modify-path --default-toolchain "$(cat /tmp/rust-toolchain)"
+      
+      - name: Build nearcore
+        run: cd nearcore && make release
+        # run: cd nearcore && mkdir target && cd target && mkdir release && cd release && touch test.txt
+
+      - name: Build and push Docker images
+        uses: docker/build-push-action@v1
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+          repository: ${{ secrets.DOCKER_REPO }}
+          tags: ${{ env.TAG }}

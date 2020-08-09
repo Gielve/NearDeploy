@@ -1,0 +1,53 @@
+version: 2.1
+
+description: Build and publish Near Core to private Docker registry
+
+executors:
+  rust:
+    docker:
+      - image: rust:latest
+
+orbs:
+  docker: circleci/docker@1.4.0
+
+jobs:
+  build:
+    description: Build and publish
+    executor: rust
+    parameters:
+      release-name:
+        default: "beta"
+        type: string
+    steps:
+      - checkout
+      - run: 
+          name: Install dependencies
+          command: apt-get update && apt-get install -y jq cmake g++ llvm clang pkg-config libudev-dev libusb-dev libusb-1.0-0-dev
+      - run: 
+          name: Clone latest nearcore <<parameters.release-name>> release
+          command: |
+            TAG=`echo $(curl -s https://api.github.com/repos/nearprotocol/nearcore/releases | jq -c -r --arg RELEASE_NAME "<<parameters.release-name>>" 'map(select(.tag_name | contains($RELEASE_NAME)))[0].tag_name')`
+            git clone --depth 1 --branch $TAG https://github.com/nearprotocol/nearcore.git
+            echo "export TAG=${TAG}" >> $BASH_ENV
+      - run: 
+          name: Build nearcore
+          command: cd nearcore && make release
+      - docker/install-docker
+      - setup_remote_docker
+      - run:
+          name: Build Docker image
+          command: docker build --build-arg ACCOUNT_ID="${ACCOUNT_ID}" -t "${DOCKER_IMAGE}:${TAG}" .
+      - run:
+          name: Push Docker image to Docker Hub
+          command: |
+            echo "$DOCKERHUB_PASS" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
+            docker push "${DOCKER_IMAGE}:${TAG}"
+          
+workflows:
+  version: 2
+  build_and_test:
+    jobs:
+      - build:
+          matrix:
+            parameters:
+              release-name: ["rc", "beta"]

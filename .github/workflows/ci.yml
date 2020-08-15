@@ -1,5 +1,8 @@
 name: Build and publish nearcore images
+
 on: [push]
+#  schedule:
+#    - cron: '*/60 * * * *'
 
 jobs:
   build:
@@ -7,30 +10,48 @@ jobs:
     strategy:
         fail-fast: false
         matrix:
-          release-name: ["beta"]
+          release-name: ["rc", "beta"]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
       
       - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y jq cmake g++ llvm clang pkg-config libudev-dev libusb-dev libusb-1.0-0-dev
+        run: sudo apt-get update && sudo apt-get install -y jq
       
-      - name: Clone latest nearcore ${{ matrix.release-name }} release
+      - name: Get latest nearcore release tag for ${{ matrix.release-name }}
         env: 
           RELEASE_NAME: ${{ matrix.release-name }}
         run: |
           TAG=`echo $(curl -s https://api.github.com/repos/nearprotocol/nearcore/releases | jq -c -r --arg RELEASE_NAME "$RELEASE_NAME" 'map(select(.tag_name | contains($RELEASE_NAME)))[0].tag_name')`
-          git clone --depth 1 --branch $TAG https://github.com/nearprotocol/nearcore.git
           echo "::set-env name=TAG::$TAG"
+      
+      - name: Check if docker tag ${{ env.TAG }} already exists in registry
+        run: |
+          TOKEN=$( curl -sSLd "username=${{ secrets.DOCKER_USERNAME }}&password=${{ secrets.DOCKER_TOKEN }}" https://hub.docker.com/v2/users/login | jq -r ".token" )
+          STATUS_CODE=$(curl --write-out %{http_code} --silent -H "Authorization: JWT $TOKEN" "https://hub.docker.com/v2/repositories/${{ secrets.DOCKER_REPO }}/tags/${{ env.TAG }}/" --output /dev/null)
+          
+          if [[ "$STATUS_CODE" -ne 200 ]] ; then
+            curl -X POST -H 'Content-type: application/json' --data '{"text":"Building new docker image for nearcore ${{ env.TAG }}"}' ${{ secrets.SLACK_WEBHOOK }}
+            echo "Docker tag not found"
+            exit 0
+          else
+            echo "Docker tag already exists"
+            exit 1
+          fi
+            
+      - name: Clone nearcore ${{ env.TAG }}
+        run: git clone --depth 1 --branch $TAG https://github.com/nearprotocol/nearcore.git
+      
+      - name: Install build dependencies
+        run: sudo apt-get install -y cmake g++ llvm clang pkg-config libudev-dev libusb-dev libusb-1.0-0-dev
       
       - name: Install rust
         run: |
           cp ./nearcore/rust-toolchain /tmp/rust-toolchain
           curl https://sh.rustup.rs -sSf | sh -s -- -y --no-modify-path --default-toolchain "$(cat /tmp/rust-toolchain)"
       
-      - name: Build nearcore
+      - name: Build nearcore ${{ env.TAG }}
         run: cd nearcore && make release
-        # run: cd nearcore && mkdir target && cd target && mkdir release && cd release && touch test.txt
 
       - name: Build and push Docker images
         uses: docker/build-push-action@v1

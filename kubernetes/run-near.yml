@@ -46,10 +46,10 @@ spec:
             claimName: near-data-claim
       containers:
         - name: nearup
-          image: gielve/main:1.11.0-beta.1
+          image: gielve/main:1.14.0-beta.2
           env:
             - name: ACCOUNT_ID
-              value: gielve.betanet.stakehouse
+              value: gielve.stakehouse.betanet
             - name: NETWORK
               value: betanet
           imagePullPolicy: Always

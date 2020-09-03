@@ -13,8 +13,9 @@ ENV NEARCORE_PATH=nearcore/target/release
 
 COPY nearcore/target/release ${NEARCORE_PATH}
 
-RUN apt-get update && apt-get install -y python3 git curl
-RUN curl --proto '=https' --tlsv1.2 -sSfL https://up.near.dev | python3 && source ~/.profile || true
+RUN apt-get update && apt-get install -y python3 git python3-pip
+RUN pip3 install --upgrade pip && pip3 install --user nearup && echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.profile || true
 
 EXPOSE 3030 24567
-CMD /bin/bash -c "source ~/.profile && nearup $NETWORK --nodocker --binary-path $NEARCORE_PATH --home \"/.near/data/\" --account-id $ACCOUNT_ID && nearup logs --follow"
+
+CMD /bin/bash -c "source ~/.profile && nearup run $NETWORK --binary-path $NEARCORE_PATH --home \"/.near/data/\" --account-id $ACCOUNT_ID && nearup logs --follow"

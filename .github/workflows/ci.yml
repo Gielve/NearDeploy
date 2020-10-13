@@ -25,16 +25,16 @@ jobs:
         env: 
           RELEASE_NAME: ${{ matrix.release-name }}
         run: |
-          TAG=`echo $(curl -s https://api.github.com/repos/nearprotocol/nearcore/releases | jq -c -r --arg RELEASE_NAME "$RELEASE_NAME" 'map(select(.tag_name | contains($RELEASE_NAME)))[0].tag_name')`
-          echo "::set-env name=TAG::$TAG"
+          TAG=`echo $(curl -s https://api.github.com/repos/near/nearcore/releases | jq -c -r --arg RELEASE_NAME "$RELEASE_NAME" 'map(select(.tag_name | contains($RELEASE_NAME)))[0].tag_name')`
+          echo "tag=$TAG" >> $GITHUB_ENV
       
-      - name: Check if docker tag ${{ env.TAG }} already exists in registry
+      - name: Check if docker tag $tag already exists in registry
         run: |
           TOKEN=$( curl -sSLd "username=${{ secrets.DOCKER_USERNAME }}&password=${{ secrets.DOCKER_TOKEN }}" https://hub.docker.com/v2/users/login | jq -r ".token" )
-          STATUS_CODE=$(curl --write-out %{http_code} --silent -H "Authorization: JWT $TOKEN" "https://hub.docker.com/v2/repositories/${{ secrets.DOCKER_REPO }}/tags/${{ env.TAG }}/" --output /dev/null)
+          STATUS_CODE=$(curl --write-out %{http_code} --silent -H "Authorization: JWT $TOKEN" "https://hub.docker.com/v2/repositories/${{ secrets.DOCKER_REPO }}/tags/$tag/" --output /dev/null)
           
           if [[ "$STATUS_CODE" -ne 200 ]] ; then
-            curl -X POST -H 'Content-type: application/json' --data '{"text":"Building new docker image for nearcore ${{ env.TAG }}"}' ${{ secrets.SLACK_WEBHOOK }}
+            curl -X POST -H 'Content-type: application/json' --data '{"text":"Building new docker image for nearcore $tag"}' ${{ secrets.SLACK_WEBHOOK }}
             echo "Docker tag not found"
             exit 0
           else
@@ -42,8 +42,8 @@ jobs:
             exit 1
           fi
             
-      - name: Clone nearcore ${{ env.TAG }}
-        run: git clone --depth 1 --branch $TAG https://github.com/nearprotocol/nearcore.git
+      - name: Clone nearcore $tag
+        run: git clone --depth 1 --branch $tag https://github.com/near/nearcore.git
       
       - name: Install build dependencies
         run: sudo apt-get install -y cmake g++ llvm clang pkg-config libudev-dev libusb-dev libusb-1.0-0-dev
@@ -53,7 +53,7 @@ jobs:
           cp ./nearcore/rust-toolchain /tmp/rust-toolchain
           curl https://sh.rustup.rs -sSf | sh -s -- -y --no-modify-path --default-toolchain "$(cat /tmp/rust-toolchain)"
       
-      - name: Build nearcore ${{ env.TAG }}
+      - name: Build nearcore $tag
         run: cd nearcore && make release
 
       - name: Build and push Docker images
@@ -62,4 +62,4 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
           repository: ${{ secrets.DOCKER_REPO }}
-          tags: ${{ env.TAG }}
+          tags: $tag
